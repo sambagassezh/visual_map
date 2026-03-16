@@ -23,7 +23,7 @@ const TRAM_COLORS = [
 ]
 
 const BASE_SCALE = 0.00012
-const MAGNIFICATION = 550
+const MAGNIFICATION = 700
 
 const CENTER_POINT = "ZW"
 
@@ -34,7 +34,7 @@ const ROAD_WIDTH = 1
 const RIVER_WIDTH = 3
 const TRAM_WIDTH = 4
 
-const ICON_BASE_SIZE = 120
+const ICON_BASE_SIZE = 250
 const ICON_PULSE_BOOST = 0.25
 
 const PULSE_SPEED = 1000
@@ -42,6 +42,19 @@ const PULSE_AMPLITUDE = 25
 const PULSE_DECAY = 1.2
 const PULSE_FREQ = 0.25
 const PULSE_LIFETIME = 3.0
+
+// ---------------- MICROPHONE ----------------
+
+let audioContext: AudioContext
+let analyser: AnalyserNode
+let micData: Uint8Array
+
+let micEnabled = false
+
+const MIC_THRESHOLD = 0.15
+const MIC_COOLDOWN = 0.15
+
+let lastMicPulse = 0
 
 // ---------------- TYPES ----------------
 
@@ -96,6 +109,8 @@ function mercator(lat: number, lon: number): Point {
     return [x, y]
 }
 
+
+
 function computeNormal(line: Point[], i: number): Point {
     let x1: number
     let y1: number
@@ -132,6 +147,42 @@ function clamp(x: number, a = 0, b = 1): number {
     return Math.max(a, Math.min(b, x))
 }
 
+
+
+async function initMicrophone() {
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+    audioContext = new AudioContext()
+
+    const source = audioContext.createMediaStreamSource(stream)
+
+    analyser = audioContext.createAnalyser()
+    analyser.fftSize = 256
+
+    source.connect(analyser)
+
+    micData = new Uint8Array(analyser.frequencyBinCount)
+
+    micEnabled = true
+
+    console.log("Microphone enabled")
+}
+
+
+function getMicLevel(): number {
+
+    if (!micEnabled) return 0
+
+    analyser.getByteFrequencyData(micData)
+
+    let sum = 0
+    for (let i = 0; i < micData.length; i++) {
+        sum += micData[i]
+    }
+
+    return sum / micData.length / 255
+}
 // ---------------- PULSE ----------------
 
 class Pulse {
@@ -436,11 +487,27 @@ function draw(): void {
 // ---------------- UPDATE ----------------
 
 function update(dt: number): void {
+
     for (const p of pulses) {
         p.update(dt)
     }
 
     pulses = pulses.filter(p => p.t < PULSE_LIFETIME)
+
+    if (!micEnabled) return
+
+    const level = getMicLevel()
+
+    const now = performance.now() / 1000
+
+    if (level > MIC_THRESHOLD && now - lastMicPulse > MIC_COOLDOWN) {
+
+        const [sx, sy] = worldToScreen(ZW[0], ZW[1])
+
+        pulses.push(new Pulse(sx, sy))
+
+        lastMicPulse = now
+    }
 }
 
 // ---------------- LOOP ----------------
@@ -458,6 +525,17 @@ function loop(t: number): void {
 }
 
 // ---------------- INPUT ----------------
+
+// ---------------- INPUT ----------------
+
+// enable microphone on first click anywhere
+window.addEventListener("click", () => {
+
+    if (!micEnabled) {
+        initMicrophone()
+    }
+
+})
 
 canvas.addEventListener("click", (e: MouseEvent) => {
     const rect = canvas.getBoundingClientRect()
@@ -477,7 +555,6 @@ window.addEventListener("keydown", (e: KeyboardEvent) => {
         pulses.push(new Pulse(p.x, p.y))
     }
 })
-
 // ---------------- START ----------------
 
 loadData()

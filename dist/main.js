@@ -26,14 +26,14 @@ const TRAM_COLORS = [
     "rgb(252,222,70)"
 ];
 const BASE_SCALE = 0.00012;
-const MAGNIFICATION = 550;
+const MAGNIFICATION = 700;
 const CENTER_POINT = "ZW";
 const ROTATION_DEG = 35;
 const ROTATION_RAD = ROTATION_DEG * Math.PI / 180;
 const ROAD_WIDTH = 1;
 const RIVER_WIDTH = 3;
 const TRAM_WIDTH = 4;
-const ICON_BASE_SIZE = 120;
+const ICON_BASE_SIZE = 250;
 const ICON_PULSE_BOOST = 0.25;
 const PULSE_SPEED = 1000;
 const PULSE_AMPLITUDE = 25;

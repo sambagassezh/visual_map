@@ -3,11 +3,7 @@
   {"name":"Letzi","lat":47.3824205,"lon":8.5040734,"type":"LZ"},
   {"name":"GrossMunster","lat":47.3700447,"lon":8.5443072,"type":"GM"},
   {"name":"Zoo","lat":47.3832321,"lon":8.5744694,"type":"ZO"},
-  {"name":"Flug","lat":47.4468008,"lon":8.5625644,"type":"FH"},
-  {"name":"Chinawiese","lat":47.3548904,"lon":8.5516541,"type":"CW"},
-  {"name":"Landi","lat":47.3496072,"lon":8.5364091,"type":"LW"},
-  {"name":"Werdinsel","lat":47.3990600,"lon":8.4901561,"type":"WI"},
-  {"name":"Uetli","lat":47.3493357,"lon":8.4916230,"type":"UE"}
+  {"name":"Werdinsel","lat":47.3990600,"lon":8.4901561,"type":"WI"}
 ]
 
 

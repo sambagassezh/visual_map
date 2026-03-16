@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+
+# optional large data
+*.tdms
+*.mp4git add .

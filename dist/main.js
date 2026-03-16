@@ -339,14 +339,20 @@ function draw() {
         ctx.stroke();
     }
     // Icons
-    // Icons
     for (const icon of icons) {
         if (!icon.loaded)
             continue;
         if (icon.failed)
             continue;
-        const w = ICON_BASE_SIZE;
-        const h = ICON_BASE_SIZE;
+        // compute pulse energy at icon position
+        let iconEnergy = 0;
+        for (const pulse of pulses) {
+            iconEnergy += Math.abs(pulse.shockValue(icon.x, icon.y));
+        }
+        iconEnergy = clamp(iconEnergy / PULSE_AMPLITUDE, 0, 1);
+        const scaleFactor = 1 + ICON_PULSE_BOOST * iconEnergy;
+        const w = ICON_BASE_SIZE * scaleFactor;
+        const h = ICON_BASE_SIZE * scaleFactor;
         ctx.drawImage(icon.img, icon.x - w / 2, icon.y - h / 2, w, h);
     }
 }

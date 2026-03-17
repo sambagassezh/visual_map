@@ -1,3 +1,8 @@
+// declare global {
+//     interface Window {
+//         supabase: any
+//     }
+// }
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -12,6 +17,13 @@ const HEIGHT = 900;
 const canvas = document.getElementById("canvas");
 canvas.width = WIDTH;
 canvas.height = HEIGHT;
+let photoPool = [];
+let activePhotos = [];
+const PHOTO_DURATION = 5;
+const PHOTO_ALPHA = 0.8;
+const MAX_ACTIVE = 4;
+const MARGIN_RATIO = 0.2;
+let slots = [];
 const ctx = canvas.getContext("2d");
 if (!ctx) {
     throw new Error("Could not get 2D canvas context");
@@ -110,6 +122,165 @@ function initMicrophone() {
         micEnabled = true;
         console.log("Microphone enabled");
     });
+}
+// (keep everything exactly as you had until generateSlots)
+function generateSlots() {
+    slots = []; // 🔥 IMPORTANT reset
+    const marginX = WIDTH * MARGIN_RATIO;
+    const marginY = HEIGHT * MARGIN_RATIO;
+    const cell = marginY;
+    // TOP
+    for (let x = marginX; x < WIDTH - marginX; x += cell) {
+        slots.push({ x, y: 0, w: cell, h: marginY });
+    }
+    // BOTTOM
+    for (let x = marginX; x < WIDTH - marginX; x += cell) {
+        slots.push({ x, y: HEIGHT - marginY, w: cell, h: marginY });
+    }
+    // LEFT
+    for (let y = marginY; y < HEIGHT - marginY; y += cell) {
+        slots.push({ x: 0, y, w: marginX, h: cell });
+    }
+    // RIGHT
+    for (let y = marginY; y < HEIGHT - marginY; y += cell) {
+        slots.push({ x: WIDTH - marginX, y, w: marginX, h: cell });
+    }
+    console.log("Slots generated:", slots.length);
+}
+function loadPhotos() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const now = performance.now() / 1000;
+        // -------- LOCAL --------
+        const localPhotos = [
+            "fotos/foto1.jpg",
+            "fotos/foto2.jpg",
+            "fotos/foto3.jpg",
+            "fotos/foto4.jpg",
+            "fotos/foto5.jpg",
+            "fotos/foto6.jpg",
+            "fotos/foto7.jpg",
+            "fotos/foto8.jpg",
+            "fotos/foto9.jpg",
+            "fotos/foto10.jpg",
+            "fotos/foto11.jpg"
+        ];
+        // local = "old" so they don't dominate
+        const localEntries = localPhotos.map(src => ({
+            url: src,
+            uploadedAt: now - 999999
+        }));
+        // -------- SUPABASE --------
+        let supabaseEntries = [];
+        try {
+            const supabaseLib = window.supabase;
+            if (supabaseLib) {
+                const SUPABASE_URL = "https://fixpfxxlnuhwzvbgcykm.supabase.co";
+                const SUPABASE_KEY = "sb_publishable_9SUF0gKkr4337Ai9i4kCrg_pSaW2sSI";
+                const supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_KEY);
+                const { data, error } = yield supabase
+                    .storage
+                    .from("photos")
+                    .list("", { limit: 100 });
+                if (!error && data) {
+                    supabaseEntries = data.map((f) => ({
+                        url: `${SUPABASE_URL}/storage/v1/object/public/photos/${f.name}`,
+                        uploadedAt: f.created_at
+                            ? new Date(f.created_at).getTime() / 1000
+                            : now - 1000 // fallback
+                    }));
+                }
+                else {
+                    console.warn("Supabase list failed:", error === null || error === void 0 ? void 0 : error.message);
+                }
+            }
+        }
+        catch (err) {
+            console.warn("Supabase failed, using local only");
+        }
+        // -------- MERGE --------
+        const all = [...localEntries, ...supabaseEntries];
+        // -------- PRELOAD --------
+        const promises = all.map(entry => new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve({
+                img,
+                uploadedAt: entry.uploadedAt
+            });
+            img.onerror = () => {
+                console.warn("Failed:", entry.url);
+                resolve(null);
+            };
+            img.src = entry.url;
+        }));
+        const results = yield Promise.all(promises);
+        // -------- STORE --------
+        photoPool = results.filter((p) => p !== null);
+        console.log("Photos ready:", photoPool.length);
+    });
+}
+// function spawnRandomPhoto() {
+//     if (photoPool.length === 0) return
+//     const src = photoPool[Math.floor(Math.random() * photoPool.length)]
+//     const img = new Image()
+//     img.onload = () => {
+//         activePhoto = {
+//             img,
+//             startTime: performance.now() / 1000
+//         }
+//     }
+//     img.src = src
+// }
+function spawnPhoto(now) {
+    if (photoPool.length === 0)
+        return;
+    if (activePhotos.length >= MAX_ACTIVE)
+        return;
+    const used = activePhotos.map(p => p.slot);
+    const free = slots.filter(s => used.indexOf(s) === -1);
+    if (free.length === 0)
+        return;
+    // -------- 🔥 WEIGHTED SELECTION --------
+    const weights = photoPool.map(p => {
+        const age = now - p.uploadedAt;
+        if (age < 300)
+            return 5; // < 5 min → VERY likely
+        if (age < 1800)
+            return 2; // < 30 min → medium
+        return 1; // old → normal
+    });
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    let selectedIndex = 0;
+    for (let i = 0; i < photoPool.length; i++) {
+        r -= weights[i];
+        if (r <= 0) {
+            selectedIndex = i;
+            break;
+        }
+    }
+    const photo = photoPool[selectedIndex];
+    // -------- SLOT --------
+    const slot = free[Math.floor(Math.random() * free.length)];
+    activePhotos.push({
+        img: photo.img,
+        startTime: now,
+        slot
+    });
+}
+function debugShowAllPhotos() {
+    if (photoPool.length === 0) {
+        console.log("No photos loaded");
+        return;
+    }
+    console.log("DEBUG: showing all photos");
+    activePhotos = []; // clear current
+    for (let i = 0; i < Math.min(photoPool.length, slots.length); i++) {
+        activePhotos.push({
+            img: photoPool[i].img,
+            startTime: performance.now() / 1000,
+            slot: slots[i]
+        });
+    }
 }
 function getMicLevel() {
     if (!micEnabled)
@@ -248,6 +419,22 @@ function loadData() {
     });
 }
 // ---------------- DRAW HELPERS ----------------
+function drawPhotos() {
+    const now = performance.now() / 1000;
+    activePhotos = activePhotos.filter(p => now - p.startTime < PHOTO_DURATION);
+    for (const p of activePhotos) {
+        const { img, slot } = p;
+        ctx.save();
+        ctx.globalAlpha = PHOTO_ALPHA;
+        const scale = Math.min(slot.w / img.width, slot.h / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        const x = slot.x + (slot.w - w) / 2;
+        const y = slot.y + (slot.h - h) / 2;
+        ctx.drawImage(img, x, y, w, h);
+        ctx.restore();
+    }
+}
 function drawPolyline(line) {
     if (line.length < 2)
         return;
@@ -278,6 +465,7 @@ function drawPolygon(poly) {
 // ---------------- DRAW ----------------
 function draw() {
     var _a;
+    // Background
     ctx.fillStyle = BG_COLOR;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     // Lakes
@@ -338,13 +526,14 @@ function draw() {
         ctx.arc(pulse.x, pulse.y, r + 8, 0, Math.PI * 2);
         ctx.stroke();
     }
+    // 🆕 PHOTOS (in margins, multiple)
+    drawPhotos();
     // Icons
     for (const icon of icons) {
         if (!icon.loaded)
             continue;
         if (icon.failed)
             continue;
-        // compute pulse energy at icon position
         let iconEnergy = 0;
         for (const pulse of pulses) {
             iconEnergy += Math.abs(pulse.shockValue(icon.x, icon.y));
@@ -357,19 +546,37 @@ function draw() {
     }
 }
 // ---------------- UPDATE ----------------
+function refreshPhotos() {
+    return __awaiter(this, void 0, void 0, function* () {
+        console.log("🔄 Refreshing photos...");
+        yield loadPhotos();
+    });
+}
 function update(dt) {
+    // -------- PULSES --------
     for (const p of pulses) {
         p.update(dt);
     }
     pulses = pulses.filter(p => p.t < PULSE_LIFETIME);
+    // -------- PHOTO SYSTEM --------
+    const now = performance.now() / 1000;
+    // 🔥 ensure we always have some photos
+    if (activePhotos.length < 2) {
+        spawnPhoto(now);
+    }
+    // optional randomness on top
+    if (Math.random() < 0.03) {
+        spawnPhoto(now);
+    }
+    // -------- MIC --------
     if (!micEnabled)
         return;
     const level = getMicLevel();
-    const now = performance.now() / 1000;
-    if (level > MIC_THRESHOLD && now - lastMicPulse > MIC_COOLDOWN) {
+    const t = now;
+    if (level > MIC_THRESHOLD && t - lastMicPulse > MIC_COOLDOWN) {
         const [sx, sy] = worldToScreen(ZW[0], ZW[1]);
         pulses.push(new Pulse(sx, sy));
-        lastMicPulse = now;
+        lastMicPulse = t;
     }
 }
 // ---------------- LOOP ----------------
@@ -403,12 +610,20 @@ window.addEventListener("keydown", (e) => {
         const p = placePointsScreen[Math.floor(Math.random() * placePointsScreen.length)];
         pulses.push(new Pulse(p.x, p.y));
     }
+    if (e.code === "KeyD") {
+        debugShowAllPhotos();
+    }
 });
 // ---------------- START ----------------
-loadData()
+Promise.all([
+    loadData(),
+    loadPhotos()
+])
     .then(() => {
+    generateSlots(); // 🔥 REQUIRED
     requestAnimationFrame(loop);
-})
-    .catch((err) => {
-    console.error("Failed to start:", err);
+    // 🔄 refresh every 20 seconds
+    setInterval(() => {
+        refreshPhotos();
+    }, 5000);
 });
